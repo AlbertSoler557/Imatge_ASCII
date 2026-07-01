@@ -47,21 +47,19 @@ def imatge_a_ascii(ruta, amplada=None, invertir=False, contrast=False, color=Fal
 
     img_original = img_original.resize((amplada, alcada))
 
+    img_gris = img_original.convert("L")  # lluminositat ponderada, per triar el caràcter
+    valors_l = list(img_gris.getdata())
+
     caracters = CARACTERS[::-1] if invertir else CARACTERS
     escala = len(caracters)
 
     if color:
-        # Convertim a HSV: el canal V (Value, el tercer) ens dona la lluminositat
-        # que farem servir per triar el caràcter; el RGB original ens dona el color
-        img_hsv = img_original.convert("HSV")
-        valors_v = [v for (_, _, v) in img_hsv.getdata()]
-        colors_rgb = list(img_original.getdata())
+        colors_rgb = list(img_original.getdata())  # color real, per pintar
 
         caracters_pintats = []
-        for v, (r, g, b) in zip(valors_v, colors_rgb):
-            idx = v * (escala - 1) // 255
+        for l, (r, g, b) in zip(valors_l, colors_rgb):
+            idx = l * (escala - 1) // 255
             caracters_pintats.append(f"{_codi_color(r, g, b)}{caracters[idx]}")
-        ascii_str = "".join(caracters_pintats)
 
         # Com que cada "caràcter" ara porta enganxat un codi de color (longitud variable),
         # no podem tallar per longitud de text; tallem per nombre de píxels originals
@@ -73,12 +71,9 @@ def imatge_a_ascii(ruta, amplada=None, invertir=False, contrast=False, color=Fal
             linies.append(linia)
         return "\n".join(linies)
 
-    # --- Versió sense color (com fins ara) ---
-    img_gris = img_original.convert("L")
-    pixels = list(img_gris.getdata())
-
+    # --- Versió sense color ---
     ascii_str = "".join(
-        caracters[pixel * (escala - 1) // 255] for pixel in pixels
+        caracters[l * (escala - 1) // 255] for l in valors_l
     )
 
     linies = [

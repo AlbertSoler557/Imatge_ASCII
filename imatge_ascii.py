@@ -10,6 +10,8 @@ Opcions:
     --sortida NOM    guarda el resultat en un fitxer de text
     --contrast       estira el contrast automàticament (recomanat)
     --color          pinta cada caràcter amb el color original del píxel (ANSI)
+    --barreja N      pes de V (HSV) barrejat amb L, de 0.0 (només L) a 1.0 (només V)
+                     per defecte 0.0. Prova 0.3-0.5 en fotos amb llums/reflexos
 """
 
 import sys
@@ -28,7 +30,7 @@ def _codi_color(r, g, b):
     return f"\033[38;2;{r};{g};{b}m"
 
 
-def imatge_a_ascii(ruta, amplada=None, invertir=False, contrast=False, color=False):
+def imatge_a_ascii(ruta, amplada=None, invertir=False, contrast=False, color=False, barreja=0.0):
     img_original = Image.open(ruta).convert("RGB")
 
     # Si no s'indica amplada, l'ajustem automàticament a la mida de la terminal
@@ -47,8 +49,21 @@ def imatge_a_ascii(ruta, amplada=None, invertir=False, contrast=False, color=Fal
 
     img_original = img_original.resize((amplada, alcada))
 
-    img_gris = img_original.convert("L")  # lluminositat ponderada, per triar el caràcter
+    # L: lluminositat ponderada (fidel a la percepció general, bona per colors saturats)
+    img_gris = img_original.convert("L")
     valors_l = list(img_gris.getdata())
+
+    # Si es demana barreja, calculem també V (HSV) i combinem els dos valors.
+    # V reacciona molt als reflexos/brillantors puntuals (útil en retrats amb llum directa)
+    if barreja > 0:
+        img_hsv = img_original.convert("HSV")
+        valors_v = [v for (_, _, v) in img_hsv.getdata()]
+        valors_brillantor = [
+            int(round(l * (1 - barreja) + v * barreja))
+            for l, v in zip(valors_l, valors_v)
+        ]
+    else:
+        valors_brillantor = valors_l
 
     caracters = CARACTERS[::-1] if invertir else CARACTERS
     escala = len(caracters)
@@ -57,8 +72,8 @@ def imatge_a_ascii(ruta, amplada=None, invertir=False, contrast=False, color=Fal
         colors_rgb = list(img_original.getdata())  # color real, per pintar
 
         caracters_pintats = []
-        for l, (r, g, b) in zip(valors_l, colors_rgb):
-            idx = l * (escala - 1) // 255
+        for b_val, (r, g, b) in zip(valors_brillantor, colors_rgb):
+            idx = b_val * (escala - 1) // 255
             caracters_pintats.append(f"{_codi_color(r, g, b)}{caracters[idx]}")
 
         # Com que cada "caràcter" ara porta enganxat un codi de color (longitud variable),
@@ -73,7 +88,7 @@ def imatge_a_ascii(ruta, amplada=None, invertir=False, contrast=False, color=Fal
 
     # --- Versió sense color ---
     ascii_str = "".join(
-        caracters[l * (escala - 1) // 255] for l in valors_l
+        caracters[b_val * (escala - 1) // 255] for b_val in valors_brillantor
     )
 
     linies = [
@@ -91,10 +106,12 @@ def main():
     parser.add_argument("--sortida", type=str, default=None, help="fitxer de sortida")
     parser.add_argument("--contrast", action="store_true", help="estira el contrast automàticament")
     parser.add_argument("--color", action="store_true", help="pinta cada caràcter amb el seu color original (ANSI)")
+    parser.add_argument("--barreja", type=float, default=0.0,
+                         help="pes de V(HSV) barrejat amb L, de 0.0 a 1.0 (per defecte 0.0)")
     args = parser.parse_args()
 
     resultat = imatge_a_ascii(
-        args.ruta, args.amplada, args.invertir, args.contrast, args.color
+        args.ruta, args.amplada, args.invertir, args.contrast, args.color, args.barreja
     )
     print(resultat)
 
